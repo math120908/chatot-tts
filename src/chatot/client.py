@@ -9,7 +9,7 @@ import sys
 from chatot.config import load_config
 from chatot.protocol import Request, decode_response, encode_request
 
-_READ_TIMEOUT_S = 60
+_READ_TIMEOUT_S = 20  # slightly longer than daemon's speak timeout (15s)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
