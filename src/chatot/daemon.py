@@ -22,6 +22,76 @@ if TYPE_CHECKING:
 logger = logging.getLogger("chatotd")
 
 # ---------------------------------------------------------------------------
+# Metal GPU health check
+# ---------------------------------------------------------------------------
+
+
+def _check_metal_health() -> bool:
+    """Test whether the Metal GPU compiler service is responsive.
+
+    Runs a trivial MLX operation that requires Metal kernel compilation.
+    Returns True if healthy, False if MTLCompilerService is dead.
+    """
+    try:
+        import mlx.core as mx
+        # Force a Metal kernel compile+eval — this is the minimal operation
+        # that will fail if MTLCompilerService is unavailable.
+        result = mx.add(mx.array([1.0]), mx.array([1.0]))
+        mx.eval(result)
+        return True
+    except Exception:
+        return False
+
+
+def _prompt_metal_recovery() -> None:
+    """Interactively guide the user through recovering MTLCompilerService.
+
+    Only called in foreground mode (before daemonize).
+    """
+    print(
+        "\n"
+        "ERROR: Metal GPU compiler service (MTLCompilerService) is not responding.\n"
+        "       This prevents MLX from loading models on the GPU.\n"
+        "\n"
+        "This typically happens after macOS sleep/wake or prolonged uptime.\n"
+    )
+
+    # Option 1: sudo killall
+    answer = input(
+        "Try restarting MTLCompilerService?\n"
+        "  This will run: sudo killall -9 MTLCompilerService\n"
+        "  [y/N] "
+    ).strip().lower()
+
+    if answer == "y":
+        import subprocess
+        ret = subprocess.run(
+            ["sudo", "killall", "-9", "MTLCompilerService"],
+            capture_output=True,
+            text=True,
+        )
+        if ret.returncode == 0:
+            print("MTLCompilerService restarted. Rechecking...")
+            import time
+            time.sleep(2)
+            if _check_metal_health():
+                print("Metal GPU is healthy now. Continuing startup.\n")
+                return
+            else:
+                print("Still not responding after restart.\n")
+        else:
+            stderr = ret.stderr.strip()
+            print(f"Command failed: {stderr}\n")
+
+    # Option 2: lock/unlock
+    print(
+        "Alternative: lock and unlock your Mac (Ctrl+Cmd+Q), then try again.\n"
+        "This resets the GPU session and usually fixes the issue.\n"
+    )
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -329,6 +399,13 @@ def main() -> None:
     if pid is not None and _is_pid_alive(pid):
         print(f"chatotd is already running (pid {pid})", file=sys.stderr)
         sys.exit(1)
+
+    # Check Metal GPU health before loading anything.
+    print("Checking Metal GPU health...")
+    if not _check_metal_health():
+        _prompt_metal_recovery()
+    else:
+        print("Metal GPU is healthy.\n")
 
     # Daemonize unless --no-daemon.
     foreground = args.no_daemon
