@@ -15,7 +15,7 @@ _DEFAULT_CONFIG_PATH = _CONFIG_DIR / "config.yaml"
 _DEFAULT_YAML = """\
 backend: qwen3
 model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
-voice: Ryan
+voice: vivian
 language: en
 
 daemon:

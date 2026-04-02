@@ -20,6 +20,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("text", nargs="?", default=None, help="Text to synthesize")
     parser.add_argument("--lang", default=None, help="Override language (e.g. zh, en)")
+    parser.add_argument("--voice", default=None, help="Override voice (e.g. vivian, serena, ryan)")
+    parser.add_argument("--list-voices", action="store_true", help="List available voices and exit")
     parser.add_argument("--socket", default=None, help="Path to daemon Unix socket")
     return parser.parse_args(argv)
 
@@ -40,7 +42,7 @@ def _resolve_text(args: argparse.Namespace) -> str | None:
     return None
 
 
-async def _send(socket_path: str, text: str, lang: str | None) -> int:
+async def _send(socket_path: str, text: str, lang: str | None, voice: str | None) -> int:
     """Connect to daemon, send request, return exit code."""
     try:
         reader, writer = await asyncio.open_unix_connection(socket_path)
@@ -49,7 +51,7 @@ async def _send(socket_path: str, text: str, lang: str | None) -> int:
         return 1
 
     try:
-        payload = encode_request(Request(text=text, lang=lang))
+        payload = encode_request(Request(text=text, lang=lang, voice=voice))
         writer.write(payload)
         await writer.drain()
 
@@ -75,9 +77,32 @@ async def _send(socket_path: str, text: str, lang: str | None) -> int:
         await writer.wait_closed()
 
 
+def _cmd_list_voices() -> int:
+    """Print available voices and return exit code."""
+    try:
+        from mlx_audio.tts.utils import load_model  # type: ignore[import-untyped]
+        config = load_config()
+        model = load_model(config.model)
+        if hasattr(model, "get_supported_speakers"):
+            voices = model.get_supported_speakers()
+            print(f"Available voices (default: {config.voice}):")
+            for v in voices:
+                marker = " (default)" if v == config.voice else ""
+                print(f"  {v}{marker}")
+        else:
+            print("This model does not support custom voices.")
+        return 0
+    except Exception as e:
+        print(f"Error loading model: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point for chatot client."""
     args = _parse_args(argv)
+
+    if args.list_voices:
+        sys.exit(_cmd_list_voices())
 
     text = _resolve_text(args)
     if text is None:
@@ -90,7 +115,7 @@ def main(argv: list[str] | None = None) -> None:
         config = load_config()
         socket_path = str(config.socket_path)
 
-    rc = asyncio.run(_send(socket_path, text, args.lang))
+    rc = asyncio.run(_send(socket_path, text, args.lang, args.voice))
     sys.exit(rc)
 
 

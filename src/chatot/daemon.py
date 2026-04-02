@@ -268,11 +268,13 @@ async def _handle_client(
             return
 
         req = decode_request(data)
-        logger.info("Request from %s: %r (lang=%s)", peer, req.text[:80], req.lang)
+        logger.info("Request from %s: %r (lang=%s, voice=%s)", peer, req.text[:80], req.lang, req.voice)
 
         kwargs: dict[str, str] = {}
         if req.lang is not None:
             kwargs["language"] = req.lang
+        if req.voice is not None:
+            kwargs["voice"] = req.voice
 
         async with speak_lock:
             try:

@@ -15,6 +15,7 @@ class Request:
 
     text: str
     lang: str | None = None
+    voice: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +37,7 @@ def decode_request(data: bytes) -> Request:
     text = obj.get("text", "")
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Request text must be a non-empty string")
-    return Request(text=text, lang=obj.get("lang"))
+    return Request(text=text, lang=obj.get("lang"), voice=obj.get("voice"))
 
 
 def encode_response(resp: Response) -> bytes:
