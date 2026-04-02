@@ -194,7 +194,7 @@ def _spawn_daemon(config_path: Path | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-_SPEAK_TIMEOUT_S = 15  # max seconds for a single speak() call
+_SPEAK_TIMEOUT_S = 30  # max seconds for a single speak() call
 _SHUTDOWN_LOCK_TIMEOUT_S = 3  # max seconds to wait for speak_lock during shutdown
 
 
