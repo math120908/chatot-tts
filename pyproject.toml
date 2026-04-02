@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatot-tts"
+version = "0.1.0"
+description = "TTS CLI tool with daemon for Claude Code"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "mlx-audio>=0.4.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+chatot = "chatot.client:main"
+chatotd = "chatot.daemon:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
