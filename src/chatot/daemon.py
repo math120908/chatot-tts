@@ -29,17 +29,22 @@ logger = logging.getLogger("chatotd")
 def _check_metal_health() -> bool:
     """Test whether the Metal GPU compiler service is responsive.
 
-    Runs a trivial MLX operation that requires Metal kernel compilation.
-    Returns True if healthy, False if MTLCompilerService is dead.
+    Uses subprocess to run a trivial MLX operation in a child process,
+    avoiding MLX initialization in the current process (which would create
+    Metal GPU threads that deadlock after fork).
     """
+    import subprocess
     try:
-        import mlx.core as mx
-        # Force a Metal kernel compile+eval — this is the minimal operation
-        # that will fail if MTLCompilerService is unavailable.
-        result = mx.add(mx.array([1.0]), mx.array([1.0]))
-        mx.eval(result)
-        return True
-    except Exception:
+        result = subprocess.run(
+            [
+                sys.executable, "-c",
+                "import mlx.core as mx; mx.eval(mx.add(mx.array([1.0]), mx.array([1.0])))",
+            ],
+            capture_output=True,
+            timeout=15,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
         return False
 
 
@@ -415,12 +420,27 @@ def main() -> None:
     # Set up logging *after* potential daemonize (fd redirects).
     _setup_logging(config, foreground=foreground)
 
+    # Install crash handler — in daemon mode, unhandled exceptions must be
+    # written to the log file directly (logging handlers may not flush).
+    def _crash_handler(exc_type, exc_value, exc_tb):
+        import traceback
+        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        logger.critical("FATAL: %s", msg)
+        # Also write directly to stderr (which is the log file after daemonize)
+        sys.stderr.write(f"FATAL: {msg}\n")
+        sys.stderr.flush()
+
+    sys.excepthook = _crash_handler
+
     logger.info("chatotd starting (pid %d)", os.getpid())
 
     try:
         asyncio.run(_serve(config))
     except KeyboardInterrupt:
         pass
+    except Exception:
+        logger.exception("Fatal error in chatotd")
+        sys.stderr.flush()
     finally:
         # Belt-and-suspenders cleanup
         _cleanup(config)
