@@ -13,9 +13,8 @@ _CONFIG_DIR = Path("~/.config/chatot").expanduser()
 _DEFAULT_CONFIG_PATH = _CONFIG_DIR / "config.yaml"
 
 _DEFAULT_YAML = """\
-backend: qwen3
-model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
-voice: vivian
+backend: edge
+voice: en-US-AvaNeural
 language: en
 
 daemon:
@@ -42,9 +41,10 @@ def _default_log() -> Path:
 class ChatotConfig:
     """Runtime configuration for chatot daemon and client."""
 
-    backend: str = "qwen3"
-    model: str = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
-    voice: str = "Ryan"
+    backend: str = "edge"
+    model: str = ""
+    voice: str = "en-US-AvaNeural"
+    rate: str = "+0%"
     language: str = "en"
     socket_path: Path = field(default_factory=_default_socket)
     pid_file: Path = field(default_factory=_default_pid)
@@ -68,6 +68,8 @@ def _parse_config(data: dict[str, Any]) -> ChatotConfig:
         kwargs["model"] = str(data["model"])
     if "voice" in data:
         kwargs["voice"] = str(data["voice"])
+    if "rate" in data:
+        kwargs["rate"] = str(data["rate"])
     if "language" in data:
         kwargs["language"] = str(data["language"])
     if "socket" in daemon:

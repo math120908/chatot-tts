@@ -37,6 +37,7 @@ class EdgeBackend(TTSBackend):
 
     def __init__(self) -> None:
         self.voice: str = _DEFAULT_VOICE
+        self.rate: str = "+0%"
         self.language: str = "en"
 
     def load(self, config: dict) -> None:
@@ -49,6 +50,7 @@ class EdgeBackend(TTSBackend):
             )
 
         self.voice = config.get("voice", _DEFAULT_VOICE)
+        self.rate = config.get("rate", "+0%")
         self.language = config.get("language", "en")
 
         # If user specified a bare voice name (e.g. "Brian"), try to resolve
@@ -56,7 +58,7 @@ class EdgeBackend(TTSBackend):
         if "Neural" not in self.voice:
             self.voice = self._resolve_voice(self.voice)
 
-        logger.info("Edge TTS configured: voice=%s", self.voice)
+        logger.info("Edge TTS configured: voice=%s, rate=%s", self.voice, self.rate)
 
     def _resolve_voice(self, short_name: str) -> str:
         """Try to resolve a short name like 'Brian' to 'en-US-BrianNeural'."""
@@ -92,7 +94,8 @@ class EdgeBackend(TTSBackend):
             tmp_path = Path(f.name)
 
         try:
-            comm = edge_tts.Communicate(text, voice)
+            rate = kwargs.get("rate", self.rate)
+            comm = edge_tts.Communicate(text, voice, rate=rate)
             _run_async(comm.save(str(tmp_path)))
 
             # Play audio — afplay is available on all macOS.

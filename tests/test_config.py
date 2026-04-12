@@ -14,15 +14,15 @@ class TestDefaultConfig:
 
     def test_default_backend(self) -> None:
         cfg = ChatotConfig()
-        assert cfg.backend == "qwen3"
+        assert cfg.backend == "edge"
 
     def test_default_model(self) -> None:
         cfg = ChatotConfig()
-        assert cfg.model == "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
+        assert cfg.model == ""
 
     def test_default_voice(self) -> None:
         cfg = ChatotConfig()
-        assert cfg.voice == "Ryan"
+        assert cfg.voice == "en-US-AvaNeural"
 
     def test_default_language(self) -> None:
         cfg = ChatotConfig()
@@ -57,7 +57,7 @@ class TestLoadConfig:
 
         cfg = load_config(config_file)
         assert config_file.exists()
-        assert cfg.backend == "qwen3"
+        assert cfg.backend == "edge"
 
     def test_reads_existing_yaml(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.yaml"
@@ -91,14 +91,14 @@ class TestLoadConfig:
         assert cfg.voice == "Zoe"
         assert cfg.language == "ja"
         # Unset fields keep defaults
-        assert cfg.backend == "qwen3"
-        assert cfg.model == "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
+        assert cfg.backend == "edge"
+        assert cfg.model == ""
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         config_file = tmp_path / "deep" / "nested" / "config.yaml"
         cfg = load_config(config_file)
         assert config_file.exists()
-        assert cfg.backend == "qwen3"
+        assert cfg.backend == "edge"
 
 
 class TestPathExpansion:

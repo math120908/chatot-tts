@@ -323,6 +323,7 @@ async def _serve(config: ChatotConfig) -> None:
         {
             "model": config.model,
             "voice": config.voice,
+            "rate": config.rate,
             "language": config.language,
         }
     )
