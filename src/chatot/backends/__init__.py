@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 # Map short name -> fully qualified class path
 BACKENDS: dict[str, str] = {
     "qwen3": "chatot.backends.qwen3.Qwen3Backend",
+    "edge": "chatot.backends.edge.EdgeBackend",
 }
 
 

@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("chatotd")
 
+# Backends that require Apple Metal GPU (MLX).
+_MLX_BACKENDS = {"qwen3"}
+
 # ---------------------------------------------------------------------------
 # Metal GPU health check
 # ---------------------------------------------------------------------------
@@ -329,22 +332,32 @@ async def _serve(config: ChatotConfig) -> None:
     # during the warmup (which blocks for several seconds).
     _write_pid(config.pid_file)
 
-    # Warmup — run a real TTS call to force Metal to compile every kernel
-    # the model needs.  After this, all pipeline states are cached
-    # in-process and MTLCompilerService is no longer needed.
-    logger.info("Running TTS warmup (compiling Metal kernels)…")
-    try:
-        backend.speak("Chatot is now ready to talk.", language=config.language)
-        logger.info("TTS warmup completed — all Metal kernels compiled")
-    except Exception:
-        logger.critical(
-            "TTS warmup failed — Metal GPU compiler service is likely dead.\n"
-            "Fix: lock/unlock your Mac (Ctrl+Cmd+Q), or run:\n"
-            "  sudo killall -9 MTLCompilerService",
-            exc_info=True,
-        )
-        _cleanup(config)
-        sys.exit(1)
+    # Warmup — for MLX backends, compile Metal kernels so MTLCompilerService
+    # is no longer needed after this point.  For other backends, a quick test
+    # call verifies connectivity.
+    if config.backend in _MLX_BACKENDS:
+        logger.info("Running TTS warmup (compiling Metal kernels)…")
+        try:
+            backend.speak("Chatot is now ready to talk.", language=config.language)
+            logger.info("TTS warmup completed — all Metal kernels compiled")
+        except Exception:
+            logger.critical(
+                "TTS warmup failed — Metal GPU compiler service is likely dead.\n"
+                "Fix: lock/unlock your Mac (Ctrl+Cmd+Q), or run:\n"
+                "  sudo killall -9 MTLCompilerService",
+                exc_info=True,
+            )
+            _cleanup(config)
+            sys.exit(1)
+    else:
+        logger.info("Running TTS warmup…")
+        try:
+            backend.speak("Ready.", language=config.language)
+            logger.info("TTS warmup completed")
+        except Exception:
+            logger.critical("TTS warmup failed", exc_info=True)
+            _cleanup(config)
+            sys.exit(1)
 
     # Shutdown machinery --------------------------------------------------
     shutdown_event = asyncio.Event()
@@ -457,8 +470,14 @@ def _cmd_status(config: ChatotConfig) -> int:
         print(f"chatotd is not running (stale PID {pid})")
         return 1
     print(f"chatotd is running (pid {pid})")
+    print(f"  backend:  {config.backend}")
+    print(f"  voice:    {config.voice}")
+    print(f"  language: {config.language}")
+    if config.backend in _MLX_BACKENDS:
+        print(f"  model:    {config.model}")
     if config.socket_path.exists():
-        print(f"  socket: {config.socket_path}")
+        print(f"  socket:   {config.socket_path}")
+    print(f"  log:      {config.log_file}")
     return 0
 
 
@@ -539,23 +558,27 @@ def _tail_log(config: ChatotConfig, *, until_ready: bool = False) -> int:
             f.seek(start_pos)
 
             no_output_since = time.monotonic()
+            seen_any_output = False
             deadline = time.monotonic() + 120 if until_ready else float("inf")
             while time.monotonic() < deadline:
                 line = f.readline()
                 if not line:
                     if until_ready:
-                        # Check if daemon crashed before writing PID file.
                         pid = _read_pid(config.pid_file)
                         if pid is not None and not _is_pid_alive(pid):
                             print("Daemon exited unexpectedly", file=sys.stderr)
                             return 1
-                        if pid is None and (time.monotonic() - no_output_since) > 10:
+                        # Only declare "crash" if we never saw ANY output.
+                        # Once the daemon has written to the log, rely on
+                        # the PID-alive check and the 120s deadline instead.
+                        if not seen_any_output and pid is None and (time.monotonic() - no_output_since) > 10:
                             print("Daemon appears to have crashed (no PID file, no log output)", file=sys.stderr)
                             return 1
                     time.sleep(0.1)
                     continue
 
                 no_output_since = time.monotonic()
+                seen_any_output = True
 
                 sys.stdout.write(line)
                 sys.stdout.flush()
@@ -630,12 +653,13 @@ def main() -> None:
         print(f"chatotd is already running (pid {pid})", file=sys.stderr)
         sys.exit(1)
 
-    # Check Metal GPU health before loading anything.
-    print("Checking Metal GPU health...")
-    if not _check_metal_health():
-        _prompt_metal_recovery()
-    else:
-        print("Metal GPU is healthy.\n")
+    # Check Metal GPU health only for MLX-based backends.
+    if config.backend in _MLX_BACKENDS:
+        print("Checking Metal GPU health...")
+        if not _check_metal_health():
+            _prompt_metal_recovery()
+        else:
+            print("Metal GPU is healthy.\n")
 
     # Daemonize unless --no-daemon.
     foreground = args.no_daemon
