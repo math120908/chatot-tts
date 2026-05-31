@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,8 +13,15 @@ _DEFAULT_CONFIG_PATH = _CONFIG_DIR / "config.yaml"
 
 _DEFAULT_YAML = """\
 backend: edge
+secondary_backend: qwen3
 voice: en-US-AvaNeural
 language: en
+
+voices:
+  en: en-US-AvaNeural
+  zh: zh-TW-HsiaoChenNeural
+  ko: ko-KR-SunHiNeural
+  mixed: Ryan
 
 daemon:
   socket: ~/.config/chatot/var/process/chatotd.sock
@@ -46,6 +52,13 @@ class ChatotConfig:
     voice: str = "en-US-AvaNeural"
     rate: str = "+0%"
     language: str = "en"
+    secondary_backend: str | None = "qwen3"
+    voices: dict[str, str] = field(default_factory=lambda: {
+        "en": "en-US-AvaNeural",
+        "zh": "zh-TW-HsiaoChenNeural",
+        "ko": "ko-KR-SunHiNeural",
+        "mixed": "Ryan",
+    })
     socket_path: Path = field(default_factory=_default_socket)
     pid_file: Path = field(default_factory=_default_pid)
     log_file: Path = field(default_factory=_default_log)
@@ -80,6 +93,21 @@ def _parse_config(data: dict[str, Any]) -> ChatotConfig:
         kwargs["log_file"] = _expand_path(daemon["log_file"])
     if "log_level" in daemon:
         kwargs["log_level"] = str(daemon["log_level"]).upper()
+
+    if "secondary_backend" in data:
+        raw_val = data["secondary_backend"]
+        kwargs["secondary_backend"] = str(raw_val) if raw_val is not None else None
+
+    default_voices = {
+        "en": "en-US-AvaNeural",
+        "zh": "zh-TW-HsiaoChenNeural",
+        "ko": "ko-KR-SunHiNeural",
+        "mixed": "Ryan",
+    }
+    if "voices" in data and isinstance(data["voices"], dict):
+        merged = dict(default_voices)
+        merged.update({str(k): str(v) for k, v in data["voices"].items()})
+        kwargs["voices"] = merged
 
     return ChatotConfig(**kwargs)
 

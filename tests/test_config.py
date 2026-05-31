@@ -119,3 +119,55 @@ class TestPathExpansion:
         data = {"daemon": {"log_file": "~/custom/chatotd.log"}}
         cfg = _parse_config(data)
         assert "~" not in str(cfg.log_file)
+
+
+class TestParseConfigMultilingual:
+    """Test parsing of new multilingual config fields."""
+
+    def test_default_has_secondary_backend(self) -> None:
+        config = _parse_config({})
+        assert config.secondary_backend == "qwen3"
+
+    def test_default_voices(self) -> None:
+        config = _parse_config({})
+        assert config.voices["en"] == "en-US-AvaNeural"
+        assert config.voices["zh"] == "zh-TW-HsiaoChenNeural"
+        assert config.voices["ko"] == "ko-KR-SunHiNeural"
+        assert config.voices["mixed"] == "Ryan"
+
+    def test_custom_voices(self) -> None:
+        data = {
+            "voices": {
+                "en": "en-US-BrianNeural",
+                "zh": "zh-CN-XiaoxiaoNeural",
+                "ko": "ko-KR-InJoonNeural",
+                "mixed": "Vivian",
+            }
+        }
+        config = _parse_config(data)
+        assert config.voices["en"] == "en-US-BrianNeural"
+        assert config.voices["mixed"] == "Vivian"
+
+    def test_partial_voices_merged_with_defaults(self) -> None:
+        data = {"voices": {"zh": "zh-CN-YunxiNeural"}}
+        config = _parse_config(data)
+        assert config.voices["zh"] == "zh-CN-YunxiNeural"
+        assert config.voices["en"] == "en-US-AvaNeural"
+
+    def test_secondary_backend_explicit(self) -> None:
+        data = {"secondary_backend": "kokoro"}
+        config = _parse_config(data)
+        assert config.secondary_backend == "kokoro"
+
+    def test_secondary_backend_none(self) -> None:
+        data = {"secondary_backend": None}
+        config = _parse_config(data)
+        assert config.secondary_backend is None
+
+    def test_backward_compat_no_voices_no_secondary(self) -> None:
+        data = {"backend": "edge", "voice": "en-US-AvaNeural", "language": "en"}
+        config = _parse_config(data)
+        assert config.backend == "edge"
+        assert config.voice == "en-US-AvaNeural"
+        assert config.secondary_backend == "qwen3"
+        assert "en" in config.voices
