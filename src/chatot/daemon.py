@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from chatot.backends import get_backend
 from chatot.config import ChatotConfig, load_config
 from chatot.protocol import Response, decode_request, encode_response
+from chatot.router import route
 
 if TYPE_CHECKING:
     pass
@@ -253,13 +254,67 @@ class _SpeakExecutorPool:
         self._zombie_executors.clear()
 
 
+class BackendPool:
+    """Manages multiple TTS backends with lazy-loading."""
+
+    def __init__(self, config: ChatotConfig, factory=None) -> None:
+        self._backends: dict[str, object] = {}
+        self._primary_name = config.backend
+        self._secondary_name = config.secondary_backend
+        self._backend_configs: dict[str, dict] = {
+            config.backend: {
+                "model": config.model,
+                "voice": config.voice,
+                "rate": config.rate,
+                "language": config.language,
+            },
+        }
+        if config.secondary_backend and config.secondary_backend != config.backend:
+            self._backend_configs[config.secondary_backend] = {
+                "model": config.model,
+                "voice": config.voices.get("mixed", config.voice),
+                "rate": config.rate,
+                "language": config.language,
+            }
+        self._factory = factory or get_backend
+
+    def load_primary(self) -> None:
+        """Load the primary backend."""
+        name = self._primary_name
+        backend = self._factory(name)
+        backend.load(self._backend_configs[name])
+        self._backends[name] = backend
+
+    def get(self, name: str) -> object:
+        """Get a backend by name. Lazy-loads secondary if needed."""
+        if name in self._backends:
+            return self._backends[name]
+        allowed: set[str] = {self._primary_name}
+        if self._secondary_name:
+            allowed.add(self._secondary_name)
+        if name not in allowed:
+            raise ValueError(f"Unknown backend: {name!r}")
+        logger.info("Lazy-loading secondary backend: %s", name)
+        backend = self._factory(name)
+        backend.load(self._backend_configs.get(name, {}))
+        self._backends[name] = backend
+        return backend
+
+    def unload_all(self) -> None:
+        """Unload all loaded backends."""
+        for name, backend in self._backends.items():
+            logger.info("Unloading backend: %s", name)
+            backend.unload()  # type: ignore[attr-defined]
+
+
 async def _handle_client(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
-    backend: object,
+    backend_pool: BackendPool,
+    config: ChatotConfig,
     speak_lock: asyncio.Lock,
     loop: asyncio.AbstractEventLoop,
-    pool: _SpeakExecutorPool,
+    executor_pool: _SpeakExecutorPool,
 ) -> None:
     """Handle a single client connection."""
     peer = writer.get_extra_info("peername") or "unknown"
@@ -273,23 +328,46 @@ async def _handle_client(
         req = decode_request(data)
         logger.info("Request from %s: %r (lang=%s, voice=%s)", peer, req.text[:80], req.lang, req.voice)
 
-        kwargs: dict[str, str] = {}
-        if req.lang is not None:
-            kwargs["language"] = req.lang
-        if req.voice is not None:
-            kwargs["voice"] = req.voice
+        decision = route(
+            text=req.text,
+            lang_override=req.lang,
+            voices=config.voices,
+            primary=config.backend,
+            secondary=config.secondary_backend,
+        )
+        logger.info(
+            "Routed: backend=%s voice=%s lang=%s",
+            decision.backend,
+            decision.voice,
+            decision.lang_code,
+        )
+
+        try:
+            target_backend = backend_pool.get(decision.backend)
+        except (ValueError, Exception) as exc:
+            logger.warning(
+                "Backend %s unavailable (%s), falling back to primary",
+                decision.backend,
+                exc,
+            )
+            target_backend = backend_pool.get(config.backend)
+
+        speak_kwargs: dict[str, str] = {"voice": decision.voice, "language": decision.lang_code}
 
         async with speak_lock:
             try:
                 await asyncio.wait_for(
-                    loop.run_in_executor(pool.executor, partial(backend.speak, req.text, **kwargs)),  # type: ignore[arg-type]
+                    loop.run_in_executor(
+                        executor_pool.executor,
+                        partial(target_backend.speak, req.text, **speak_kwargs),  # type: ignore[attr-defined]
+                    ),
                     timeout=_SPEAK_TIMEOUT_S,
                 )
             except asyncio.TimeoutError:
                 logger.warning("speak() timed out for %s after %ds", peer, _SPEAK_TIMEOUT_S)
                 # The executor thread is zombied — replace it so subsequent
                 # requests don't queue behind the stuck thread (livelock fix).
-                pool.replace_after_timeout()
+                executor_pool.replace_after_timeout()
                 await _send_response(writer, Response("error", f"speak timeout ({_SPEAK_TIMEOUT_S}s)"))
                 return
 
@@ -311,22 +389,15 @@ async def _handle_client(
 
 async def _serve(config: ChatotConfig) -> None:
     """Main async entry: load backend, run socket server, handle signals."""
-    # Load backend --------------------------------------------------------
-    backend = get_backend(config.backend)
+    # Load backends -------------------------------------------------------
     logger.info(
         "Loading backend %r (model=%s, voice=%s)",
         config.backend,
         config.model,
         config.voice,
     )
-    backend.load(
-        {
-            "model": config.model,
-            "voice": config.voice,
-            "rate": config.rate,
-            "language": config.language,
-        }
-    )
+    backend_pool = BackendPool(config)
+    backend_pool.load_primary()
     logger.info("Backend loaded successfully")
 
     # Write PID early so the parent's _tail_log can check we're alive
@@ -336,10 +407,11 @@ async def _serve(config: ChatotConfig) -> None:
     # Warmup — for MLX backends, compile Metal kernels so MTLCompilerService
     # is no longer needed after this point.  For other backends, a quick test
     # call verifies connectivity.
+    primary_backend = backend_pool.get(config.backend)
     if config.backend in _MLX_BACKENDS:
         logger.info("Running TTS warmup (compiling Metal kernels)…")
         try:
-            backend.speak("Chatot is now ready to talk.", language=config.language)
+            primary_backend.speak("Chatot is now ready to talk.", language=config.language)  # type: ignore[attr-defined]
             logger.info("TTS warmup completed — all Metal kernels compiled")
         except Exception:
             logger.critical(
@@ -353,7 +425,7 @@ async def _serve(config: ChatotConfig) -> None:
     else:
         logger.info("Running TTS warmup…")
         try:
-            backend.speak("Ready.", language=config.language)
+            primary_backend.speak("Ready.", language=config.language)  # type: ignore[attr-defined]
             logger.info("TTS warmup completed")
         except Exception:
             logger.critical("TTS warmup failed", exc_info=True)
@@ -377,10 +449,11 @@ async def _serve(config: ChatotConfig) -> None:
 
     handler = partial(
         _handle_client,
-        backend=backend,
+        backend_pool=backend_pool,
+        config=config,
         speak_lock=speak_lock,
         loop=loop,
-        pool=pool,
+        executor_pool=pool,
     )
 
     server = await asyncio.start_unix_server(handler, path=str(config.socket_path))
@@ -411,7 +484,7 @@ async def _serve(config: ChatotConfig) -> None:
 
         # Wait for zombie threads before unloading the model they reference.
         pool.shutdown()
-        backend.unload()
+        backend_pool.unload_all()
         logger.info("Backend unloaded")
         _cleanup(config)
         logger.info("Clean exit")
