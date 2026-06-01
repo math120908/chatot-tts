@@ -199,6 +199,7 @@ def _spawn_daemon(config_path: Path | None) -> None:
 
 
 _SPEAK_TIMEOUT_S = 30  # max seconds for a single speak() call
+_LAZY_LOAD_TIMEOUT_S = 120  # max seconds for first-time backend lazy-load + speak
 _SHUTDOWN_LOCK_TIMEOUT_S = 3  # max seconds to wait for speak_lock during shutdown
 
 
@@ -261,21 +262,19 @@ class BackendPool:
         self._backends: dict[str, object] = {}
         self._primary_name = config.backend
         self._secondary_name = config.secondary_backend
-        self._backend_configs: dict[str, dict] = {
-            config.backend: {
-                "model": config.model,
-                "voice": config.voice,
-                "rate": config.rate,
-                "language": config.language,
-            },
+        base: dict = {
+            "rate": config.rate,
+            "language": config.language,
         }
+        if config.model:
+            base["model"] = config.model
+
+        primary_cfg = {**base, "voice": config.voice}
+        self._backend_configs: dict[str, dict] = {config.backend: primary_cfg}
+
         if config.secondary_backend and config.secondary_backend != config.backend:
-            self._backend_configs[config.secondary_backend] = {
-                "model": config.model,
-                "voice": config.voices.get("mixed", config.voice),
-                "rate": config.rate,
-                "language": config.language,
-            }
+            secondary_cfg = {**base, "voice": config.voices.get("mixed", config.voice)}
+            self._backend_configs[config.secondary_backend] = secondary_cfg
         self._factory = factory or get_backend
 
     def load_primary(self) -> None:
@@ -342,26 +341,30 @@ async def _handle_client(
             decision.lang_code,
         )
 
-        try:
-            target_backend = backend_pool.get(decision.backend)
-        except (ValueError, Exception) as exc:
-            logger.warning(
-                "Backend %s unavailable (%s), falling back to primary",
-                decision.backend,
-                exc,
-            )
-            target_backend = backend_pool.get(config.backend)
-
         speak_kwargs: dict[str, str] = {"voice": decision.voice, "language": decision.lang_code}
+
+        def _resolve_and_speak() -> None:
+            """Resolve backend (may lazy-load) and speak. Runs in executor thread."""
+            try:
+                backend = backend_pool.get(decision.backend)
+            except (ValueError, Exception) as exc:
+                logger.warning(
+                    "Backend %s unavailable (%s), falling back to primary",
+                    decision.backend,
+                    exc,
+                )
+                backend = backend_pool.get(config.backend)
+            backend.speak(req.text, **speak_kwargs)  # type: ignore[attr-defined]
+
+        # Use longer timeout when secondary backend needs lazy-loading.
+        needs_load = decision.backend not in backend_pool._backends
+        timeout = _LAZY_LOAD_TIMEOUT_S if needs_load else _SPEAK_TIMEOUT_S
 
         async with speak_lock:
             try:
                 await asyncio.wait_for(
-                    loop.run_in_executor(
-                        executor_pool.executor,
-                        partial(target_backend.speak, req.text, **speak_kwargs),  # type: ignore[attr-defined]
-                    ),
-                    timeout=_SPEAK_TIMEOUT_S,
+                    loop.run_in_executor(executor_pool.executor, _resolve_and_speak),
+                    timeout=timeout,
                 )
             except asyncio.TimeoutError:
                 logger.warning("speak() timed out for %s after %ds", peer, _SPEAK_TIMEOUT_S)
