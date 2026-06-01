@@ -98,6 +98,13 @@ class EdgeBackend(TTSBackend):
             comm = edge_tts.Communicate(text, voice, rate=rate)
             _run_async(comm.save(str(tmp_path)))
 
+            # Save a copy if requested.
+            save_path = kwargs.get("save_path")
+            if save_path:
+                import shutil
+                shutil.copy2(str(tmp_path), str(save_path))
+                logger.info("Audio saved to %s", save_path)
+
             # Play audio — afplay is available on all macOS.
             result = subprocess.run(
                 ["afplay", str(tmp_path)],

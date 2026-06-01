@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 from chatot.config import load_config
 from chatot.protocol import Request, decode_response, encode_request
@@ -21,6 +22,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("text", nargs="?", default=None, help="Text to synthesize")
     parser.add_argument("--lang", default=None, help="Override language (e.g. zh, en)")
     parser.add_argument("--voice", default=None, help="Override voice (e.g. vivian, serena, ryan)")
+    parser.add_argument("--save", default=None, metavar="PATH", help="Save audio to file (in addition to playing)")
     parser.add_argument("--list-voices", action="store_true", help="List available voices and exit")
     parser.add_argument("--socket", default=None, help="Path to daemon Unix socket")
     return parser.parse_args(argv)
@@ -42,7 +44,13 @@ def _resolve_text(args: argparse.Namespace) -> str | None:
     return None
 
 
-async def _send(socket_path: str, text: str, lang: str | None, voice: str | None) -> int:
+async def _send(
+    socket_path: str,
+    text: str,
+    lang: str | None,
+    voice: str | None,
+    save_path: str | None,
+) -> int:
     """Connect to daemon, send request, return exit code."""
     try:
         reader, writer = await asyncio.open_unix_connection(socket_path)
@@ -51,7 +59,7 @@ async def _send(socket_path: str, text: str, lang: str | None, voice: str | None
         return 1
 
     try:
-        payload = encode_request(Request(text=text, lang=lang, voice=voice))
+        payload = encode_request(Request(text=text, lang=lang, voice=voice, save_path=save_path))
         writer.write(payload)
         await writer.drain()
 
@@ -115,7 +123,8 @@ def main(argv: list[str] | None = None) -> None:
         config = load_config()
         socket_path = str(config.socket_path)
 
-    rc = asyncio.run(_send(socket_path, text, args.lang, args.voice))
+    save = str(Path(args.save).resolve()) if args.save else None
+    rc = asyncio.run(_send(socket_path, text, args.lang, args.voice, save))
     sys.exit(rc)
 
 

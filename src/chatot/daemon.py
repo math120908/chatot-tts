@@ -341,7 +341,11 @@ async def _handle_client(
             decision.lang_code,
         )
 
-        speak_kwargs: dict[str, str] = {"voice": decision.voice, "language": decision.lang_code}
+        speak_kwargs: dict[str, str | None] = {
+            "voice": decision.voice,
+            "language": decision.lang_code,
+            "save_path": req.save_path,
+        }
 
         def _resolve_and_speak() -> None:
             """Resolve backend (may lazy-load) and speak. Runs in executor thread."""

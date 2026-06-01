@@ -120,6 +120,7 @@ class Qwen3Backend(TTSBackend):
 
         voice = kwargs.get("voice", self.voice)
         language = kwargs.get("language", self.language)
+        save_path = kwargs.get("save_path")
 
         logger.info("Speaking: %.80s (voice=%s, lang=%s)", text, voice, language)
 
@@ -135,7 +136,8 @@ class Qwen3Backend(TTSBackend):
                 stream=True,
                 play=True,
                 verbose=False,
-                save=False,
+                save=bool(save_path),
+                **({"output_file": save_path} if save_path else {}),
             )
 
         captured = cap.buffer.getvalue()
