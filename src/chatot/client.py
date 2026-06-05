@@ -90,12 +90,16 @@ def _cmd_list_voices() -> int:
     try:
         from mlx_audio.tts.utils import load_model  # type: ignore[import-untyped]
         config = load_config()
-        model = load_model(config.model)
+        model_id = config.get_backend_option("qwen3", "model")
+        if not model_id:
+            model_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
+        model = load_model(model_id)
         if hasattr(model, "get_supported_speakers"):
-            voices = model.get_supported_speakers()
-            print(f"Available voices (default: {config.voice}):")
-            for v in voices:
-                marker = " (default)" if v == config.voice else ""
+            speakers = model.get_supported_speakers()
+            default = config.default_voice
+            print(f"Available voices (default: {default}):")
+            for v in speakers:
+                marker = " (default)" if v == default else ""
                 print(f"  {v}{marker}")
         else:
             print("This model does not support custom voices.")

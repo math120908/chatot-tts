@@ -260,21 +260,21 @@ class BackendPool:
 
     def __init__(self, config: ChatotConfig, factory=None) -> None:
         self._backends: dict[str, object] = {}
-        self._primary_name = config.backend
+        self._primary_name = config.primary_backend
         self._secondary_name = config.secondary_backend
-        base: dict = {
-            "rate": config.rate,
-            "language": config.language,
-        }
-        if config.model:
-            base["model"] = config.model
 
-        primary_cfg = {**base, "voice": config.voice}
-        self._backend_configs: dict[str, dict] = {config.backend: primary_cfg}
+        # Build per-backend load configs from structured options.
+        primary_opts = dict(config.backend_options.get(config.primary_backend, {}))
+        primary_opts["voice"] = config.default_voice
+        primary_opts["language"] = config.default_lang
+        self._backend_configs: dict[str, dict] = {config.primary_backend: primary_opts}
 
-        if config.secondary_backend and config.secondary_backend != config.backend:
-            secondary_cfg = {**base, "voice": config.voices.get("mixed", config.voice)}
-            self._backend_configs[config.secondary_backend] = secondary_cfg
+        if config.secondary_backend and config.secondary_backend != config.primary_backend:
+            sec_opts = dict(config.backend_options.get(config.secondary_backend, {}))
+            sec_opts["voice"] = config.voices.get("mixed", config.default_voice)
+            sec_opts["language"] = config.default_lang
+            self._backend_configs[config.secondary_backend] = sec_opts
+
         self._factory = factory or get_backend
 
     def load_primary(self) -> None:
@@ -331,7 +331,7 @@ async def _handle_client(
             text=req.text,
             lang_override=req.lang,
             voices=config.voices,
-            primary=config.backend,
+            primary=config.primary_backend,
             secondary=config.secondary_backend,
         )
         logger.info(
@@ -357,7 +357,7 @@ async def _handle_client(
                     decision.backend,
                     exc,
                 )
-                backend = backend_pool.get(config.backend)
+                backend = backend_pool.get(config.primary_backend)
             backend.speak(req.text, **speak_kwargs)  # type: ignore[attr-defined]
 
         # Use longer timeout when secondary backend needs lazy-loading.
@@ -398,10 +398,10 @@ async def _serve(config: ChatotConfig) -> None:
     """Main async entry: load backend, run socket server, handle signals."""
     # Load backends -------------------------------------------------------
     logger.info(
-        "Loading backend %r (model=%s, voice=%s)",
-        config.backend,
-        config.model,
-        config.voice,
+        "Loading backend %r (voice=%s, lang=%s)",
+        config.primary_backend,
+        config.default_voice,
+        config.default_lang,
     )
     backend_pool = BackendPool(config)
     backend_pool.load_primary()
@@ -414,11 +414,11 @@ async def _serve(config: ChatotConfig) -> None:
     # Warmup — for MLX backends, compile Metal kernels so MTLCompilerService
     # is no longer needed after this point.  For other backends, a quick test
     # call verifies connectivity.
-    primary_backend = backend_pool.get(config.backend)
-    if config.backend in _MLX_BACKENDS:
+    primary_backend = backend_pool.get(config.primary_backend)
+    if config.primary_backend in _MLX_BACKENDS:
         logger.info("Running TTS warmup (compiling Metal kernels)…")
         try:
-            primary_backend.speak("Chatot is now ready to talk.", language=config.language)  # type: ignore[attr-defined]
+            primary_backend.speak("Chatot is now ready to talk.", language=config.default_lang)  # type: ignore[attr-defined]
             logger.info("TTS warmup completed — all Metal kernels compiled")
         except Exception:
             logger.critical(
@@ -432,7 +432,7 @@ async def _serve(config: ChatotConfig) -> None:
     else:
         logger.info("Running TTS warmup…")
         try:
-            primary_backend.speak("Ready.", language=config.language)  # type: ignore[attr-defined]
+            primary_backend.speak("Ready.", language=config.default_lang)  # type: ignore[attr-defined]
             logger.info("TTS warmup completed")
         except Exception:
             logger.critical("TTS warmup failed", exc_info=True)
@@ -551,11 +551,11 @@ def _cmd_status(config: ChatotConfig) -> int:
         print(f"chatotd is not running (stale PID {pid})")
         return 1
     print(f"chatotd is running (pid {pid})")
-    print(f"  backend:  {config.backend}")
-    print(f"  voice:    {config.voice}")
-    print(f"  language: {config.language}")
-    if config.backend in _MLX_BACKENDS:
-        print(f"  model:    {config.model}")
+    print(f"  backend:  {config.primary_backend}")
+    if config.secondary_backend:
+        print(f"  secondary: {config.secondary_backend}")
+    print(f"  lang:     {config.default_lang}")
+    print(f"  voices:   {config.voices}")
     if config.socket_path.exists():
         print(f"  socket:   {config.socket_path}")
     print(f"  log:      {config.log_file}")
@@ -735,7 +735,7 @@ def main() -> None:
         sys.exit(1)
 
     # Check Metal GPU health only for MLX-based backends.
-    if config.backend in _MLX_BACKENDS:
+    if config.primary_backend in _MLX_BACKENDS:
         print("Checking Metal GPU health...")
         if not _check_metal_health():
             _prompt_metal_recovery()

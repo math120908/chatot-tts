@@ -10,10 +10,12 @@ from chatot.daemon import BackendPool
 class _FakeBackend:
     def __init__(self) -> None:
         self.loaded = False
+        self.load_config: dict = {}
         self.spoken: list[tuple[str, dict]] = []
 
-    def load(self, _config: dict) -> None:
+    def load(self, config: dict) -> None:
         self.loaded = True
+        self.load_config = config
 
     def speak(self, text: str, **kwargs) -> None:
         self.spoken.append((text, kwargs))
@@ -29,8 +31,8 @@ class TestBackendPool:
         pool._primary_name = "edge"
         pool._secondary_name = "qwen3"
         pool._backend_configs = {
-            "edge": {"voice": "en-US-AvaNeural", "language": "en"},
-            "qwen3": {"voice": "Ryan", "language": "en"},
+            "edge": {"voice": "en-US-AvaNeural", "language": "auto"},
+            "qwen3": {"voice": "Ryan", "language": "auto"},
         }
         pool._factory = lambda _name: _FakeBackend()
         return pool
@@ -81,3 +83,10 @@ class TestBackendPool:
         pool.load_primary()
         with pytest.raises(ValueError, match="Unknown backend"):
             pool.get("qwen3")
+
+    def test_primary_config_passed_to_backend(self) -> None:
+        pool = self._make_pool()
+        pool.load_primary()
+        backend = pool._backends["edge"]
+        assert backend.load_config["voice"] == "en-US-AvaNeural"
+        assert backend.load_config["language"] == "auto"
