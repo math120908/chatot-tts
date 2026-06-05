@@ -342,7 +342,7 @@ async def _handle_client(
         )
 
         speak_kwargs: dict[str, str | None] = {
-            "voice": decision.voice,
+            "voice": req.voice if req.voice else decision.voice,
             "language": decision.lang_code,
             "save_path": req.save_path,
         }
