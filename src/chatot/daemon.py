@@ -198,8 +198,8 @@ def _spawn_daemon(config_path: Path | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-_SPEAK_TIMEOUT_S = 30  # max seconds for a single speak() call
-_LAZY_LOAD_TIMEOUT_S = 120  # max seconds for first-time backend lazy-load + speak
+_SPEAK_TIMEOUT_S = 180  # max seconds for a single speak() call (qwen3 MLX needs ~110s)
+_LAZY_LOAD_TIMEOUT_S = 300  # max seconds for first-time backend lazy-load + speak
 _SHUTDOWN_LOCK_TIMEOUT_S = 3  # max seconds to wait for speak_lock during shutdown
 
 
@@ -333,6 +333,7 @@ async def _handle_client(
             voices=config.voices,
             primary=config.primary_backend,
             secondary=config.secondary_backend,
+            voice_override=req.voice,
         )
         logger.info(
             "Routed: backend=%s voice=%s lang=%s",

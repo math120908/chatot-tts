@@ -72,16 +72,41 @@ class RoutingDecision:
     lang_code: str  # language code
 
 
+def _detect_lang(text: str, lang_override: str | None) -> str:
+    """Determine language code from override or script detection."""
+    if lang_override in ("auto", "mixed"):
+        return "auto"
+    if lang_override is not None:
+        return lang_override
+    scripts = detect_scripts(text)
+    if len(scripts) == 1:
+        return next(iter(scripts))
+    if len(scripts) >= 2:
+        return "auto"
+    return "en"
+
+
+def _is_edge_voice(voice: str) -> bool:
+    """Edge TTS voices contain '-' (e.g. 'en-US-AvaNeural').
+
+    Qwen3 voices are bare names (e.g. 'ryan', 'uncle_fu').
+    """
+    return "-" in voice
+
+
 def route(
     text: str,
     lang_override: str | None,
     voices: dict[str, str],
     primary: str,
     secondary: str | None,
+    voice_override: str | None = None,
 ) -> RoutingDecision:
     """Determine which backend, voice, and language code to use.
 
     Priority order:
+    0. voice_override is set → voice format determines backend:
+       contains '-' → primary (edge), bare name → secondary (qwen3).
     1. lang_override == "auto" or "mixed"  → secondary backend (or primary
        fallback), mixed voice, lang="auto".
     2. lang_override is a specific tag (e.g. "zh")  → primary backend,
@@ -93,6 +118,21 @@ def route(
     """
     default_voice = voices.get("en", next(iter(voices.values())))
 
+    # --- Case 0: voice override determines backend --------------------
+    if voice_override is not None:
+        if _is_edge_voice(voice_override):
+            backend = primary
+        elif secondary is not None:
+            backend = secondary
+        else:
+            backend = primary
+        lang_code = _detect_lang(text, lang_override)
+        return RoutingDecision(
+            backend=backend,
+            voice=voice_override,
+            lang_code=lang_code,
+        )
+
     # --- Case 1: explicit "auto" / "mixed" override --------------------
     if lang_override in ("auto", "mixed"):
         if secondary is not None:
@@ -101,7 +141,6 @@ def route(
                 voice=voices.get("mixed", default_voice),
                 lang_code="auto",
             )
-        # No secondary — fall through to primary with mixed voice
         return RoutingDecision(
             backend=primary,
             voice=voices.get("mixed", default_voice),

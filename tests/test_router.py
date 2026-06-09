@@ -153,3 +153,53 @@ class TestRoute:
         decision = route("some text", "auto", VOICES, PRIMARY, secondary=None)
         assert decision.backend == PRIMARY
         assert decision.lang_code == "auto"
+
+    # --- voice_override routing ----------------------------------------
+
+    def test_bare_voice_routes_to_secondary(self) -> None:
+        decision = route("Hello world", None, VOICES, PRIMARY, SECONDARY, voice_override="vivian")
+        assert decision == RoutingDecision(
+            backend=SECONDARY,
+            voice="vivian",
+            lang_code="en",
+        )
+
+    def test_edge_voice_routes_to_primary(self) -> None:
+        decision = route("Hello world", None, VOICES, PRIMARY, SECONDARY, voice_override="en-US-BrianNeural")
+        assert decision == RoutingDecision(
+            backend=PRIMARY,
+            voice="en-US-BrianNeural",
+            lang_code="en",
+        )
+
+    def test_bare_voice_no_secondary_falls_back_to_primary(self) -> None:
+        decision = route("Hello world", None, VOICES, PRIMARY, secondary=None, voice_override="vivian")
+        assert decision == RoutingDecision(
+            backend=PRIMARY,
+            voice="vivian",
+            lang_code="en",
+        )
+
+    def test_bare_voice_preserves_lang_from_text(self) -> None:
+        decision = route("你好世界", None, VOICES, PRIMARY, SECONDARY, voice_override="uncle_fu")
+        assert decision == RoutingDecision(
+            backend=SECONDARY,
+            voice="uncle_fu",
+            lang_code="zh",
+        )
+
+    def test_bare_voice_with_lang_override(self) -> None:
+        decision = route("Hello", "zh", VOICES, PRIMARY, SECONDARY, voice_override="vivian")
+        assert decision == RoutingDecision(
+            backend=SECONDARY,
+            voice="vivian",
+            lang_code="zh",
+        )
+
+    def test_voice_override_mixed_text_lang_auto(self) -> None:
+        decision = route("Hello 你好", None, VOICES, PRIMARY, SECONDARY, voice_override="ryan")
+        assert decision == RoutingDecision(
+            backend=SECONDARY,
+            voice="ryan",
+            lang_code="auto",
+        )

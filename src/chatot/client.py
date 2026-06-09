@@ -10,7 +10,7 @@ from pathlib import Path
 from chatot.config import load_config
 from chatot.protocol import Request, decode_response, encode_request
 
-_READ_TIMEOUT_S = 120  # generous for first-time lazy-load of secondary backend
+_READ_TIMEOUT_S = 300  # generous for qwen3 MLX generation (~110s) + lazy-load
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -86,27 +86,39 @@ async def _send(
 
 
 def _cmd_list_voices() -> int:
-    """Print available voices and return exit code."""
+    """Print available voices grouped by backend."""
+    config = load_config()
+
+    # Edge TTS voices (from config)
+    print("Edge TTS voices (online, config-based):")
+    for lang, voice in sorted(config.voices.items()):
+        if "-" not in voice:
+            continue
+        print(f"  {voice}  [{lang}]")
+
+    # Qwen3 voices (from model)
+    print()
     try:
         from mlx_audio.tts.utils import load_model  # type: ignore[import-untyped]
-        config = load_config()
         model_id = config.get_backend_option("qwen3", "model")
         if not model_id:
             model_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
         model = load_model(model_id)
         if hasattr(model, "get_supported_speakers"):
             speakers = model.get_supported_speakers()
-            default = config.default_voice
-            print(f"Available voices (default: {default}):")
+            mixed_voice = config.voices.get("mixed", "").lower()
+            print("Qwen3 voices (local MLX, multilingual):")
             for v in speakers:
-                marker = " (default)" if v == default else ""
+                marker = " (default)" if v.lower() == mixed_voice else ""
                 print(f"  {v}{marker}")
         else:
-            print("This model does not support custom voices.")
-        return 0
+            print("Qwen3: model does not support custom voices.")
+    except ImportError:
+        print("Qwen3: mlx-audio not installed (pip install chatot[mlx])")
     except Exception as e:
-        print(f"Error loading model: {e}", file=sys.stderr)
-        return 1
+        print(f"Qwen3: error loading model: {e}", file=sys.stderr)
+
+    return 0
 
 
 def main(argv: list[str] | None = None) -> None:
