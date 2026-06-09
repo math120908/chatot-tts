@@ -22,7 +22,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("text", nargs="?", default=None, help="Text to synthesize")
     parser.add_argument("--lang", default=None, help="Override language (e.g. zh, en)")
     parser.add_argument("--voice", default=None, help="Override voice (e.g. vivian, serena, ryan)")
-    parser.add_argument("--save", default=None, metavar="PATH", help="Save audio to file (in addition to playing)")
+    parser.add_argument("--save", default=None, metavar="PATH", help="Save audio to file (without playing)")
     parser.add_argument("--list-voices", action="store_true", help="List available voices and exit")
     parser.add_argument("--socket", default=None, help="Path to daemon Unix socket")
     return parser.parse_args(argv)

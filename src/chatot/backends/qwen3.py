@@ -126,6 +126,7 @@ class Qwen3Backend(TTSBackend):
 
         # generate_audio() has a bare `except Exception` that swallows errors
         # (prints traceback but doesn't re-raise).  Capture output to detect it.
+        play = not save_path
         cap = _OutputCapture()
         with cap:
             generate_audio(
@@ -134,7 +135,7 @@ class Qwen3Backend(TTSBackend):
                 voice=voice,
                 lang_code=language,
                 stream=True,
-                play=True,
+                play=play,
                 verbose=False,
                 save=bool(save_path),
                 **({"output_file": save_path} if save_path else {}),
@@ -153,10 +154,9 @@ class Qwen3Backend(TTSBackend):
                 "Restart the daemon: chatotd stop && chatotd"
             )
 
-        # Extra buffer time — mlx-audio's AudioPlayer.stop() only sleeps 100ms
-        # after drain, which can truncate the final audio chunk.
-        import time
-        time.sleep(0.8)
+        if play:
+            import time
+            time.sleep(0.8)
         logger.info("speak() completed successfully")
 
     def unload(self) -> None:
