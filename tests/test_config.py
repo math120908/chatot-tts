@@ -112,6 +112,8 @@ class TestParseConfigV2:
         assert config.voices["en"] == "en-US-AvaNeural"
         assert config.voices["zh"] == "zh-TW-HsiaoChenNeural"
         assert config.voices["ko"] == "ko-KR-SunHiNeural"
+        assert config.voices["ja"] == "ja-JP-NanamiNeural"
+        assert config.voices["sw"] == "sw-TZ-RehemaNeural"
         assert config.voices["mixed"] == "Ryan"
 
     def test_custom_voices(self) -> None:

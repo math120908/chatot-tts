@@ -23,6 +23,8 @@ routing:
     en: en-US-AvaNeural
     zh: zh-TW-HsiaoChenNeural
     ko: ko-KR-SunHiNeural
+    ja: ja-JP-NanamiNeural
+    sw: sw-TZ-RehemaNeural
     mixed: Ryan
 
 backends:
@@ -40,6 +42,8 @@ _DEFAULT_VOICES = {
     "en": "en-US-AvaNeural",
     "zh": "zh-TW-HsiaoChenNeural",
     "ko": "ko-KR-SunHiNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "sw": "sw-TZ-RehemaNeural",
     "mixed": "Ryan",
 }
 

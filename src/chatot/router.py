@@ -13,22 +13,44 @@ def detect_scripts(text: str) -> set[str]:
     """Detect which writing scripts are present in *text*.
 
     Returns a set of script tags:
+    - "ja" — Japanese kana (Hiragana / Katakana). If kana is present the
+      string is treated as Japanese and any CJK ideographs (kanji) are
+      folded into "ja" rather than "zh".
     - "zh" — CJK Unified Ideographs (and extensions / compatibility blocks)
     - "ko" — Hangul Syllables and Jamo
     - "en" — Basic Latin letters and Latin Extended (a–z, A–Z, U+00C0–U+024F)
+
+    Note: Swahili uses the Latin script and is therefore reported as "en";
+    it cannot be auto-detected and requires an explicit ``--lang sw``.
 
     Punctuation, digits, and whitespace are ignored and contribute nothing.
     """
     scripts: set[str] = set()
     for ch in text:
         cp = ord(ch)
-        if _is_cjk(cp):
+        if _is_kana(cp):
+            scripts.add("ja")
+        elif _is_cjk(cp):
             scripts.add("zh")
         elif _is_hangul(cp):
             scripts.add("ko")
         elif _is_latin(cp):
             scripts.add("en")
+    # Kana wins over kanji: if any Japanese kana is present, the CJK
+    # ideographs are Japanese kanji, not Chinese — drop the "zh" tag so the
+    # whole string is treated as Japanese.
+    if "ja" in scripts:
+        scripts.discard("zh")
     return scripts
+
+
+def _is_kana(cp: int) -> bool:
+    return (
+        0x3040 <= cp <= 0x309F    # Hiragana
+        or 0x30A0 <= cp <= 0x30FF  # Katakana
+        or 0x31F0 <= cp <= 0x31FF  # Katakana Phonetic Extensions
+        or 0xFF66 <= cp <= 0xFF9D  # Halfwidth Katakana
+    )
 
 
 def _is_cjk(cp: int) -> bool:
@@ -116,6 +138,10 @@ def route(
        - 2+ scripts + secondary available → secondary + mixed voice + "auto"
        - 0 scripts or mixed without secondary → primary + default voice + "en"
     """
+    # --- Guard: reject the invalid 'jp' code (canonical tag is 'ja') ---
+    if lang_override == "jp":
+        raise ValueError("Invalid language 'jp'. Use 'ja' for Japanese.")
+
     default_voice = voices.get("en", next(iter(voices.values())))
 
     # --- Case 0: voice override determines backend --------------------

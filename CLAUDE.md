@@ -12,7 +12,7 @@ src/chatot/
   client.py            # CLI client — sends text to daemon via Unix socket
   daemon.py            # daemon server — async socket server, backend pool, lifecycle
   config.py            # YAML config loading, ChatotConfig dataclass
-  router.py            # language detection (script-based) and backend/voice routing
+  router.py            # language detection (script-based; kana→ja, sw needs explicit --lang) and backend/voice routing
   protocol.py          # Request/Response wire format (newline-delimited JSON)
   _migrate.py          # v1 → v2 config migration (temporary)
   backends/
@@ -58,3 +58,4 @@ pip install -e '.[mlx]'   # with Qwen3/MLX support
 - `_SpeakExecutorPool` replaces the ThreadPoolExecutor after a timeout to prevent livelock from zombied threads
 - Metal GPU health check runs `mlx.core` matmul in a subprocess to detect dead MTLCompilerService
 - Config auto-migrates v1 (flat) → v2 (structured) format on disk via `_migrate.py`
+- Language codes: canonical Japanese tag is `ja` (kana auto-detected; pure kanji stays `zh`); `jp` is rejected in `router.route()` with a clear error. Swahili (`sw`) is Latin-script so it cannot be auto-detected — requires explicit `--lang sw`. Both `ja` and `sw` route to Edge (strategy A; qwen3/edge/daemon untouched)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from chatot.router import RoutingDecision, detect_scripts, route
 
 
@@ -13,6 +15,8 @@ VOICES: dict[str, str] = {
     "en": "en-US-AvaNeural",
     "zh": "zh-TW-HsiaoChenNeural",
     "ko": "ko-KR-SunHiNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "sw": "sw-TZ-RehemaNeural",
     "mixed": "Ryan",
 }
 
@@ -137,11 +141,11 @@ class TestRoute:
         assert decision.voice == VOICES["en"]  # default_voice = voices["en"]
 
     def test_unknown_lang_override_uses_primary_default_voice(self) -> None:
-        decision = route("some text", "ja", VOICES, PRIMARY, SECONDARY)
+        decision = route("some text", "de", VOICES, PRIMARY, SECONDARY)
         assert decision == RoutingDecision(
             backend=PRIMARY,
-            voice=VOICES["en"],  # "ja" not in VOICES → default_voice
-            lang_code="ja",
+            voice=VOICES["en"],  # "de" not in VOICES → default_voice
+            lang_code="de",
         )
 
     def test_mixed_text_no_secondary_falls_back_to_primary(self) -> None:
@@ -203,3 +207,113 @@ class TestRoute:
             voice="ryan",
             lang_code="auto",
         )
+
+
+# ---------------------------------------------------------------------------
+# Japanese (ja) — kana detection
+# ---------------------------------------------------------------------------
+
+
+class TestJapaneseDetection:
+    """Kana detection and the 'kana wins over kanji' rule."""
+
+    def test_hiragana_only(self) -> None:
+        assert detect_scripts("こんにちは") == {"ja"}
+
+    def test_katakana_only(self) -> None:
+        assert detect_scripts("カタカナ") == {"ja"}
+
+    def test_katakana_phonetic_ext(self) -> None:
+        # U+31F0 — Katakana Phonetic Extensions block
+        assert detect_scripts("\u31F0") == {"ja"}
+
+    def test_halfwidth_katakana(self) -> None:
+        # U+FF66 — Halfwidth Katakana block
+        assert detect_scripts("\uFF66") == {"ja"}
+
+    def test_kanji_and_kana_is_ja_not_zh(self) -> None:
+        # Kanji + kana → the presence of kana makes the whole string ja;
+        # the "zh" that kanji would contribute is discarded.
+        assert detect_scripts("日本語です") == {"ja"}
+
+    def test_pure_kanji_stays_zh(self) -> None:
+        # No kana → cannot distinguish from Chinese; stays zh (known limit).
+        assert detect_scripts("東京") == {"zh"}
+
+    def test_kana_with_latin_is_mixed(self) -> None:
+        assert detect_scripts("Hello こんにちは") == {"ja", "en"}
+
+
+# ---------------------------------------------------------------------------
+# Swahili (sw) — Latin-only, cannot auto-detect (known limitation)
+# ---------------------------------------------------------------------------
+
+
+class TestSwahiliDetection:
+    """Swahili uses Latin script and is indistinguishable from English."""
+
+    def test_swahili_text_detected_as_en(self) -> None:
+        # "Habari" is Swahili for "hello" but is pure Latin → detected as en.
+        # Documents the known limitation: sw needs explicit --lang sw.
+        assert detect_scripts("Habari za asubuhi") == {"en"}
+
+
+# ---------------------------------------------------------------------------
+# ja / sw routing → always Edge (strategy A)
+# ---------------------------------------------------------------------------
+
+
+class TestJaSwRouting:
+    """ja and sw always route to the primary (edge) backend."""
+
+    def test_lang_override_ja_uses_primary_ja_voice(self) -> None:
+        decision = route("some text", "ja", VOICES, PRIMARY, SECONDARY)
+        assert decision == RoutingDecision(
+            backend=PRIMARY,
+            voice=VOICES["ja"],
+            lang_code="ja",
+        )
+
+    def test_lang_override_sw_uses_primary_sw_voice(self) -> None:
+        decision = route("Habari", "sw", VOICES, PRIMARY, SECONDARY)
+        assert decision == RoutingDecision(
+            backend=PRIMARY,
+            voice=VOICES["sw"],
+            lang_code="sw",
+        )
+
+    def test_japanese_text_autodetect_uses_primary_ja_voice(self) -> None:
+        decision = route("こんにちは", None, VOICES, PRIMARY, SECONDARY)
+        assert decision == RoutingDecision(
+            backend=PRIMARY,
+            voice=VOICES["ja"],
+            lang_code="ja",
+        )
+
+    def test_kanji_kana_autodetect_uses_primary_ja_voice(self) -> None:
+        decision = route("日本語です", None, VOICES, PRIMARY, SECONDARY)
+        assert decision == RoutingDecision(
+            backend=PRIMARY,
+            voice=VOICES["ja"],
+            lang_code="ja",
+        )
+
+
+# ---------------------------------------------------------------------------
+# 'jp' is an invalid language code — must raise a clear error
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidJpCode:
+    """'jp' is rejected with a friendly error pointing to 'ja'."""
+
+    def test_jp_lang_override_raises(self) -> None:
+        with pytest.raises(ValueError) as exc:
+            route("some text", "jp", VOICES, PRIMARY, SECONDARY)
+        msg = str(exc.value)
+        assert "jp" in msg
+        assert "ja" in msg
+
+    def test_jp_with_voice_override_still_raises(self) -> None:
+        with pytest.raises(ValueError):
+            route("some text", "jp", VOICES, PRIMARY, SECONDARY, voice_override="ryan")

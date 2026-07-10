@@ -20,7 +20,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Send text to chatotd for speech synthesis.",
     )
     parser.add_argument("text", nargs="?", default=None, help="Text to synthesize")
-    parser.add_argument("--lang", default=None, help="Override language (e.g. zh, en)")
+    parser.add_argument("--lang", default=None, help="Override language (e.g. en, zh, ko, ja, sw). Note: use 'ja' for Japanese ('jp' is rejected); 'sw' (Swahili) must be set explicitly as it cannot be auto-detected")
     parser.add_argument("--voice", default=None, help="Override voice (e.g. vivian, serena, ryan)")
     parser.add_argument("--save", default=None, metavar="PATH", help="Save audio to file (without playing)")
     parser.add_argument("--list-voices", action="store_true", help="List available voices and exit")
