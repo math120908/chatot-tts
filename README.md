@@ -7,7 +7,7 @@ TTS CLI tool with persistent daemon for Claude Code integration. Supports multil
 - **Daemon architecture** — `chatotd` stays resident with the TTS model loaded; `chatot` sends text via Unix socket for instant playback
 - **Dual backend** — Edge TTS (Microsoft, online) as primary; Qwen3-TTS via MLX (local, Apple Silicon GPU) as secondary
 - **Multilingual routing** — auto-detects CJK / Hangul / Latin scripts and picks the right voice; mixed-language text routes to Qwen3 for natural code-switching
-- **Per-language voices** — configurable voice map (`en`, `zh`, `ko`, `mixed`)
+- **Per-language voices** — configurable voice map (`en`, `zh`, `ko`, `ja`, `sw`, `mixed`)
 - **Save to file** — `--save path.mp3` writes audio alongside playback
 
 ## Requirements
@@ -55,6 +55,8 @@ routing:
     en: en-US-AvaNeural
     zh: zh-TW-HsiaoChenNeural
     ko: ko-KR-SunHiNeural
+    ja: ja-JP-NanamiNeural
+    sw: sw-TZ-RehemaNeural
     mixed: Ryan
 
 backends:
@@ -90,9 +92,23 @@ chatotd (daemon)
 | Input | Backend | Voice |
 |---|---|---|
 | Single script (e.g. English only) | primary (edge) | per-language voice |
+| Japanese kana (Hiragana/Katakana, ± kanji) | primary (edge) | `ja` voice |
 | Mixed scripts (e.g. English + Chinese) | secondary (qwen3) | `mixed` voice |
 | `--lang zh` | primary (edge) | zh voice |
+| `--lang ja` | primary (edge) | ja voice |
+| `--lang sw` | primary (edge) | sw voice |
 | `--lang auto` / `--lang mixed` | secondary (qwen3) | `mixed` voice |
+
+### Language notes
+
+- **Japanese (`ja`)** — auto-detected via kana. Pure-kanji text (no kana) is
+  indistinguishable from Chinese and is treated as `zh`; force with `--lang ja`.
+  The code `jp` is **invalid** — use `ja`. Passing `--lang jp` returns a clear
+  error rather than silently correcting.
+- **Swahili (`sw`)** — uses the Latin script, so it **cannot be auto-detected**
+  (it looks like English). It must be requested explicitly with `--lang sw`.
+- **Backends** — `ja` and `sw` both route to Edge TTS. (Qwen3 supports Japanese
+  but not Swahili; to keep behaviour simple both use Edge.)
 
 ## License
 
