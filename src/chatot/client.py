@@ -138,18 +138,6 @@ def _fetch_edge_voices() -> list[dict[str, str]]:
     ]
 
 
-def _fetch_qwen3_voices(config) -> list[str]:
-    """Load Qwen3 model and return speaker names."""
-    from mlx_audio.tts.utils import load_model  # type: ignore[import-untyped]
-    model_id = config.get_backend_option("qwen3", "model")
-    if not model_id:
-        model_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
-    model = load_model(model_id)
-    if hasattr(model, "get_supported_speakers"):
-        return list(model.get_supported_speakers())
-    return []
-
-
 def _cmd_list_voices() -> int:
     """Print available voices grouped by backend, with caching."""
     config = load_config()
@@ -165,15 +153,6 @@ def _cmd_list_voices() -> int:
         except Exception as e:
             print(f"  Edge: fetch failed ({e})", file=sys.stderr)
             cache["edge"] = []
-
-        try:
-            cache["qwen3"] = _fetch_qwen3_voices(config)
-        except ImportError:
-            print("  Qwen3: mlx-audio not installed", file=sys.stderr)
-            cache["qwen3"] = []
-        except Exception as e:
-            print(f"  Qwen3: fetch failed ({e})", file=sys.stderr)
-            cache["qwen3"] = []
 
         _save_voice_cache(cache)
         print(file=sys.stderr)
@@ -197,17 +176,7 @@ def _cmd_list_voices() -> int:
                 parts.append(f"{suffix}{marker}")
             print(f"  {locale}: {', '.join(parts)}")
 
-    # Display Qwen3 voices
-    qwen3_voices = cache.get("qwen3", [])
-    if qwen3_voices:
-        mixed_voice = config.voices.get("mixed", "").lower()
-        print()
-        print("Qwen3 voices (local MLX, multilingual):")
-        for v in qwen3_voices:
-            marker = " (default)" if v.lower() == mixed_voice else ""
-            print(f"  {v}{marker}")
-
-    if not edge_voices and not qwen3_voices:
+    if not edge_voices:
         print("No voices available.")
 
     return 0
