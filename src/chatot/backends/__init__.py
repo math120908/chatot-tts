@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 # Map short name -> fully qualified class path
 BACKENDS: dict[str, str] = {
-    "qwen3": "chatot.backends.qwen3.Qwen3Backend",
     "edge": "chatot.backends.edge.EdgeBackend",
 }
 
@@ -19,7 +18,7 @@ def get_backend(name: str) -> TTSBackend:
     """Get a backend instance by short name.
 
     Args:
-        name: Backend identifier (e.g. 'qwen3').
+        name: Backend identifier (e.g. 'edge').
 
     Returns:
         An instantiated (but not yet loaded) TTSBackend.

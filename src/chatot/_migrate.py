@@ -51,7 +51,7 @@ def migrate(data: dict) -> dict:
         return data
 
     primary = data.get("backend", "edge")
-    secondary_raw = data.get("secondary_backend", "qwen3")
+    secondary_raw = data.get("secondary_backend")
     secondary = str(secondary_raw) if secondary_raw is not None else None
 
     # Build voices map.

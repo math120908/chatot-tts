@@ -436,9 +436,9 @@ async def _serve(config: ChatotConfig) -> None:
             primary_backend.speak("Ready.", language=config.default_lang)  # type: ignore[attr-defined]
             logger.info("TTS warmup completed")
         except Exception:
-            logger.critical("TTS warmup failed", exc_info=True)
-            _cleanup(config)
-            sys.exit(1)
+            # Network backends (edge) can fail transiently (e.g. a 403 on the
+            # websocket handshake); each request reconnects, so keep serving.
+            logger.warning("TTS warmup failed; continuing anyway", exc_info=True)
 
     # Shutdown machinery --------------------------------------------------
     shutdown_event = asyncio.Event()

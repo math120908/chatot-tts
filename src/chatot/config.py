@@ -29,7 +29,7 @@ routing:
 
 backends:
   primary: edge
-  secondary: qwen3
+  secondary: null
 
 daemon:
   socket: ~/.config/chatot/var/process/chatotd.sock
@@ -70,7 +70,7 @@ class ChatotConfig:
 
     # Backends
     primary_backend: str = "edge"
-    secondary_backend: str | None = "qwen3"
+    secondary_backend: str | None = None
     backend_options: dict[str, dict[str, str]] = field(default_factory=dict)
 
     # Daemon infra

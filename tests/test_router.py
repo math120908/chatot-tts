@@ -176,13 +176,9 @@ class TestRoute:
             lang_code="en",
         )
 
-    def test_bare_voice_no_secondary_falls_back_to_primary(self) -> None:
-        decision = route("Hello world", None, VOICES, PRIMARY, secondary=None, voice_override="vivian")
-        assert decision == RoutingDecision(
-            backend=PRIMARY,
-            voice="vivian",
-            lang_code="en",
-        )
+    def test_bare_voice_no_secondary_raises_clear_error(self) -> None:
+        with pytest.raises(ValueError, match="Qwen3 backend is disabled"):
+            route("Hello world", None, VOICES, PRIMARY, secondary=None, voice_override="vivian")
 
     def test_bare_voice_preserves_lang_from_text(self) -> None:
         decision = route("你好世界", None, VOICES, PRIMARY, SECONDARY, voice_override="uncle_fu")

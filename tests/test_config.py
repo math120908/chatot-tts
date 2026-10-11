@@ -18,7 +18,7 @@ class TestDefaultConfig:
 
     def test_default_secondary_backend(self) -> None:
         cfg = ChatotConfig()
-        assert cfg.secondary_backend == "qwen3"
+        assert cfg.secondary_backend is None
 
     def test_default_lang(self) -> None:
         cfg = ChatotConfig()
@@ -104,7 +104,7 @@ class TestParseConfigV2:
     def test_defaults_from_empty(self) -> None:
         config = _parse_config({})
         assert config.primary_backend == "edge"
-        assert config.secondary_backend == "qwen3"
+        assert config.secondary_backend is None
         assert config.default_lang == "auto"
 
     def test_default_voices(self) -> None:

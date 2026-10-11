@@ -128,7 +128,8 @@ def route(
 
     Priority order:
     0. voice_override is set → voice format determines backend:
-       contains '-' → primary (edge), bare name → secondary (qwen3).
+       contains '-' → primary (edge), bare name → secondary if configured,
+       otherwise ValueError (Qwen3 is disabled by default).
     1. lang_override == "auto" or "mixed"  → secondary backend (or primary
        fallback), mixed voice, lang="auto".
     2. lang_override is a specific tag (e.g. "zh")  → primary backend,
@@ -151,7 +152,11 @@ def route(
         elif secondary is not None:
             backend = secondary
         else:
-            backend = primary
+            raise ValueError(
+                f"Voice {voice_override!r} looks like a Qwen3 voice, but the Qwen3 "
+                "backend is disabled. Use an Edge voice name such as "
+                "'en-US-AvaNeural' (see 'chatot --list-voices')."
+            )
         lang_code = _detect_lang(text, lang_override)
         return RoutingDecision(
             backend=backend,
